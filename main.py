@@ -138,29 +138,20 @@ biases = {
 
 # Construct model
 pred = model(x, weights, biases)
+count_batch = n_input / batch_size
 
-
-# eval center of tiles
 # get crop size
-"""
-crop_size = int(__tile_size__ / 100.0 * 10.0)
 
-slice_y = y
-slice_pred = pred
-slice_y[:, 0: crop_size,  0: crop_size, :] = 0
-slice_pred[:, 0: crop_size,  0: crop_size, :] = 0
-slice_y[:, __tile_size__ - crop_size: __tile_size__,  __tile_size__ - crop_size: __tile_size__, :] = 0
-slice_pred[:, __tile_size__ - crop_size: __tile_size__,  __tile_size__ - crop_size: __tile_size__, :] = 0
+# crop_size = int(__tile_size__ / 100.0 * 10.0)
+crop_size = int((((n1 - n2) / 2.0) - 3.0) / 2.0)
+slice_y = y[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
+slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
 
-y = slice_y
-pred = slice_pred
-print crop_size
-"""
 # Define loss and optimizer
 # Euclidean distance
-count_batch = n_input / batch_size
-cost = tf.div(tf.reduce_sum(tf.pow(tf.sub(pred, y), 2)), (3 * __tile_size__ * __tile_size__ * count_batch * batch_size))
+cost = tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, slice_y), 2)), (3 * __tile_size__ * __tile_size__ * count_batch * batch_size))
 optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
+
 # Evaluate model
 correct_pred = tf.equal(pred, y)
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
