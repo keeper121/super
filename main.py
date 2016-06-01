@@ -143,7 +143,7 @@ count_batch = n_input / batch_size
 # get crop size
 
 # crop_size = int(__tile_size__ / 100.0 * 10.0)
-crop_size = int((((n1 - n2) / 2.0) - 3.0) / 2.0)
+crop_size = int((((n1 - n2) / 2.0) + 3.0) / 2.0)
 slice_y = y[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
 slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
 
