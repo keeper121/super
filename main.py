@@ -6,6 +6,7 @@ from os.path import isfile, join
 import tensorflow as tf
 import ntpath
 import warnings
+from matplotlib import pyplot as PLT
 import numpy as np
 #constants
 __need_blurred_image__ = 1          # flag to generate blurred image
@@ -98,7 +99,7 @@ f2 = 1
 f3 = 5
 n1 = 64
 n2 = 32
-learning_rate = 0.001
+learning_rate = 0.0001
 training_iters = 100000
 batch_size = 5
 display_step = 10
@@ -142,14 +143,30 @@ count_batch = n_input / batch_size
 
 # get crop size
 
-# crop_size = int(__tile_size__ / 100.0 * 10.0)
-crop_size = int((((n1 - n2) / 2.0) + 3.0) / 2.0)
-slice_y = y[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
+crop_size = ((((n1 - n2) / 2.0) - 3.0) / 2.0)
+# crop_size = ((n1 - n2 - 3.0) / 2.0)
+
+#slice_y = y[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
+#slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
+
+
+def cost_func(pred, y, crop_size):
+    i = 0
+    sum = tf.Variable(0.0)
+
+    #get center
+    while i < batch_size:
+        slice_y = tf.image.central_crop(y[i,:,:,:], crop_size / __tile_size__)
+        slice_pred = tf.image.central_crop(pred[i,:,:,:], crop_size / __tile_size__)
+        tf.add(sum, tf.reduce_sum(tf.pow(tf.sub(slice_pred, slice_y), 2)))
+        i = i + 1
+
+    return tf.div(sum, (3 * __tile_size__ * __tile_size__ * count_batch * batch_size))
+
 
 # Define loss and optimizer
 # Euclidean distance
-cost = tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, slice_y), 2)), (3 * __tile_size__ * __tile_size__ * count_batch * batch_size))
+cost = cost_func(pred, y, crop_size)
 optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate).minimize(cost)
 
 # Evaluate model
@@ -158,6 +175,7 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 # Initializing the variables
 init = tf.initialize_all_variables()
+show_img = 1
 
 # Launch the graph
 with tf.Session() as sess:
@@ -165,7 +183,6 @@ with tf.Session() as sess:
     step = 1
     # Keep training until reach max iterations
     while step < count_batch:
-
         batch_xs = blurred_images_tiles[batch_size * (step - 1):batch_size * step]
         batch_ys = original_images_tiles[batch_size * (step - 1):batch_size * step]
 
