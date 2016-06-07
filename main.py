@@ -11,7 +11,7 @@ import numpy as np
 #constants
 __need_blurred_image__ = 1          # flag to generate blurred image
 __upscale_coefficient__ = 2         # coefficient for image blurring
-__tile_size__ = 32
+__tile_size__ = 64
 crop_size = 12 # for convolutional
 model_path = "model.ckpt"
 #open directory with images
@@ -142,15 +142,15 @@ def model(_X, _weights, _biases):
 
 # Store layers weight & bias
 weights = {
-    'wc1': tf.Variable(tf.random_normal([f1, f1, 3, n1])), # 1 input, n1 outputs
-    'wc2': tf.Variable(tf.random_normal([f2, f2, n1, n2])), # n1 inputs, n2 outputs
-    'wc3': tf.Variable(tf.random_normal([f3, f3, n2, 3])), # n2 inputs, 1 outputs
+    'wc1': tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1"), # 1 input, n1 outputs
+    'wc2': tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2"), # n1 inputs, n2 outputs
+    'wc3': tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3"), # n2 inputs, 1 outputs
 }
 
 biases = {
-    'bc1': tf.Variable(tf.random_normal([n1])),
-    'bc2': tf.Variable(tf.random_normal([n2])),
-    'bc3': tf.Variable(tf.random_normal([3])),
+    'bc1': tf.Variable(tf.random_normal([n1]), name="bc1"),
+    'bc2': tf.Variable(tf.random_normal([n2]), name="bc2"),
+    'bc3': tf.Variable(tf.random_normal([3]), name="bc3"),
 }
 
 # Construct model
@@ -196,7 +196,7 @@ with tf.Session() as sess:
     print "Optimization Finished!"
 
     # Test model
-    print "Accuracy:", accuracy.eval({x: blurred_images_tiles[:count_batch * batch_size], y: original_images_tiles[:count_batch * batch_size]})
+    print "Accuracy:", accuracy.eval({x: blurred_images_tiles[:count_batch * batch_size], y: original_images_tiles[:count_batch * batch_size]}) / count_batch
 
     # Save model weights to disk
     save_path = saver.save(sess, model_path)
