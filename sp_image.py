@@ -1,12 +1,6 @@
-import skimage.transform
-from skimage.io import imsave, imread
-import os
-from os import listdir, path
-from os.path import isfile, join
 from skimage.io import imread
-import scipy
 import tensorflow as tf
-from scipy.misc import toimage
+from PIL import Image
 
 #parameters
 
@@ -16,6 +10,28 @@ f3 = 5
 n1 = 64
 n2 = 32
 image_path = "test.jpg"
+__tile_size__ = 64
+crop_size = 12
+
+# tf Graph input
+x = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
+
+
+def conv2d(img, w, b):
+    return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
+
+#create model
+
+def model(_X, _weights, _biases):
+    # Convolution Layer
+    conv1 = conv2d(_X, _weights['wc1'], _biases['bc1'])
+
+    # Convolution Layer
+    conv2 = conv2d(conv1, _weights['wc2'], _biases['bc2'])
+
+    # Convolution Layer
+    conv3 = conv2d(conv2, _weights['wc3'], _biases['bc3'])
+    return conv3
 
 
 # Store layers weight & bias
@@ -31,23 +47,17 @@ biases = {
     'bc3': tf.Variable(tf.random_normal([3]), name="bc3"),
 }
 
-
 #open blurred image
-blurred_image = imread(image_path)
-
-
+blurred_image = [imread(image_path)]
 saver = tf.train.Saver()
+val = model(x, weights, biases)
+#y = tf.Variable(tf.random_normal([1, __tile_size__, __tile_size__, 3]))
+init = tf.initialize_all_variables()
+
 with tf.Session() as sess:
-  saver.restore(sess, "model.ckpt")
-  print("Model restored.")
-
-  # 1 - convolutional
-  output = scipy.ndimage.convolve(blurred_image, weights['wc1'].eval())
-
-  # 2 - convolutional
-  output = scipy.ndimage.convolve(output, weights['wc2'].eval())
-
-  # 3 - convolutional
-  output = scipy.ndimage.convolve(output, weights['wc3'].eval())
-
-  toimage(output).show()
+    saver.restore(sess, "model.ckpt")
+    print("Model restored.")
+    sess.run(init)
+    res = sess.run(val, feed_dict={x:blurred_image})
+    img = Image.fromarray(res[0], 'RGB')
+    img.show()

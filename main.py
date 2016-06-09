@@ -201,6 +201,7 @@ with tf.Session() as sess:
     # Save model weights to disk
     save_path = saver.save(sess, model_path)
     print "Model saved in file: %s" % save_path
+
 #--------------------------------------#
 
 
