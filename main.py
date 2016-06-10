@@ -1,13 +1,13 @@
 import ntpath
 import os
 import warnings
-
+import pylab
 import numpy as np
 import skimage.transform
 import tensorflow as tf
 from skimage.io import imsave, imread
 from PIL import Image
-__tile_size__ = 32
+__tile_size__ = 64
 _crop_size = 12 # for convolutional
 
 class SuperResolutionDataSet:
@@ -17,8 +17,6 @@ class SuperResolutionDataSet:
     _original_image_directory = "images"
     _original_tiles_directory = "out/original_tiles"
     _blurred_tiles_directory = "out/blurred_tiles"
-
-
 
     #open directory with images
     def get_directory(self, folder):
@@ -43,13 +41,13 @@ class SuperResolutionDataSet:
         return img
 
     #do tiles
-    def crop_tiles_in_folder(self, _path, _image, _tile_size):
+    def crop_tiles_in_folder(self, _path, _image, image_name, _tile_size):
         i = 0
         for h in range(0, _image.shape[0], _tile_size):
             for w in range(0, _image.shape[1], _tile_size):
                 w_end = w + _tile_size
                 h_end = h + _tile_size
-                imsave(_path + "/" + os.path.splitext(ntpath.basename(image))[0] + '_tiles_{0}.jpg'.format(i), _image[w:w_end, h:h_end])
+                imsave(_path + "/" + os.path.splitext(ntpath.basename(image_name))[0] + '_tiles_{0}.jpg'.format(i), _image[w:w_end, h:h_end])
                 i += 1
 
     #clear directory
@@ -86,28 +84,30 @@ class SuperResolutionDataSet:
                 print (image)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
+                    image_name = image;
                     blurred_image = self.get_blurred_image(image, self.__upscale_coefficient__)
                     # resize to 256x256
                     blurred_image = skimage.transform.resize(blurred_image, (256, 256))
                     original_image = imread(image)
                     original_image = skimage.transform.resize(original_image, (256, 256))
                     # crop tiles
-                    self.crop_tiles_in_folder(self._blurred_tiles_directory, blurred_image, __tile_size__)
-                    self.crop_tiles_in_folder(self._original_tiles_directory, original_image, __tile_size__)
+                    self.crop_tiles_in_folder(self._blurred_tiles_directory, blurred_image, image_name, __tile_size__)
+                    self.crop_tiles_in_folder(self._original_tiles_directory, original_image, image_name, __tile_size__)
 
-                    # blurred images tiles
-                    blurred_images = self.get_directory(self._blurred_tiles_directory)
+            # blurred images tiles
+            blurred_images = self.get_directory(self._blurred_tiles_directory)
 
+            print len(blurred_images), "tiles generated"
+            for image in blurred_images:
+                image = imread(image)
+                blurred_images_tiles.append(image)
+                # original images tiles
+                original_images = self.get_directory("out/original_tiles")
 
-                    for image in blurred_images:
-                        image = imread(image)
-                        blurred_images_tiles.append(image)
-                    # original images tiles
-                    original_images = self.get_directory("out/original_tiles")
-
-                    for image in original_images:
-                        image = imread(image)
-                        original_images_tiles.append(self.centeredCrop(image, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2))
+            for image in original_images:
+                image = imread(image)
+                original_images_tiles.append(self.centeredCrop(image, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2))
+            print str(len(blurred_images)) + "x2", "tiles saved"
 
         return blurred_images_tiles, original_images_tiles
 
@@ -205,14 +205,14 @@ class SuperResolutionModel:
                 loss = sess.run(cost, feed_dict={self.x: batch_xs, self.y: batch_ys})
                 print "Iter " + str(step) + ", Training Accuracy = " + str(acc) + ", loss = " + str(loss)
                 step += 1
-                print "Optimization Finished!"
+            print "Optimization Finished!"
 
-                # Test model
-                print "Accuracy:", accuracy.eval({self.x: blurred_images_tiles[:count_batch * self.batch_size], self.y: original_images_tiles[:count_batch * self.batch_size]}) / count_batch
+            # Test model
+            print "Accuracy:", accuracy.eval({self.x: blurred_images_tiles[:count_batch * self.batch_size], self.y: original_images_tiles[:count_batch * self.batch_size]}) / count_batch
 
-                # Save model weights to disk
-                save_path = saver.save(sess, model_save_name)
-                print "Model saved in file: %s" % save_path
+            # Save model weights to disk
+            save_path = saver.save(sess, model_save_name)
+            print "Model saved in file: %s" % save_path
 
     # try get super resolutional from test image
     def evaluate_model(self, model_name, image_path):
@@ -228,12 +228,32 @@ class SuperResolutionModel:
             sess.run(init)
             res = sess.run(val, feed_dict={self.x:blurred_image})
             img = Image.fromarray(res[0], 'RGB')
-            img.show()
+
+            f = pylab.figure()
+            #blurred image
+            f.add_subplot(2, 1, 1)
+            image = Image.open(image_path)
+            arr = np.asarray(image)
+            pylab.imshow(arr)
+
+            #restored image
+            f.add_subplot(2, 1, 2)
+            image = img
+            arr = np.asarray(image)
+            pylab.imshow(arr)
+
+
+            pylab.title('Images')
+            pylab.show()
 #--------------------------------------#
+need_train = 1
+need_evaluate = 1
 
 # main code
-blurred_tiles, original_tiles = SuperResolutionDataSet().generate_dataset()
-SuperResolutionModel().train(blurred_tiles, original_tiles, "model.ckpt")
+if (need_train):
+    blurred_tiles, original_tiles = SuperResolutionDataSet().generate_dataset()
+    SuperResolutionModel().train(blurred_tiles, original_tiles, "model.ckpt")
 
 #test
-SuperResolutionModel().evaluate_model("model.ckpt")
+if (need_evaluate):
+    SuperResolutionModel().evaluate_model("model.ckpt", "test.jpg")
