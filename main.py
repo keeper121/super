@@ -1,13 +1,15 @@
+# coding=utf-8
 import ntpath
 import os
 import warnings
 import pylab
 import numpy as np
+import skimage
 import skimage.transform
 import tensorflow as tf
 from skimage.io import imsave, imread
 from PIL import Image
-__tile_size__ = 64
+__tile_size__ = 42
 _crop_size = 12 # for convolutional
 
 class SuperResolutionDataSet:
@@ -17,6 +19,9 @@ class SuperResolutionDataSet:
     _original_image_directory = "images"
     _original_tiles_directory = "out/original_tiles"
     _blurred_tiles_directory = "out/blurred_tiles"
+
+    _image_resize_width = 336
+    _image_resize_height = 336
 
     #open directory with images
     def get_directory(self, folder):
@@ -41,6 +46,19 @@ class SuperResolutionDataSet:
         return img
 
     #do tiles
+    def crop_tiles_in_folder_tf(self, _path, _image, height, width, image_name, _tile_size):
+        i = 0
+        for h in range(0, height, _tile_size):
+            for w in range(0, width, _tile_size):
+#                imsave(_path + "/" + os.path.splitext(ntpath.basename(image_name))[0] + '_tiles_{0}.jpg'.format(i), _image[w:w_end, h:h_end])
+                image = tf.image.crop_to_bounding_box(_image, h, w, _tile_size, _tile_size);
+
+                with tf.Session() as sess:
+                    image = image.eval()
+                    imsave(_path + "/" + os.path.splitext(ntpath.basename(image_name))[0] + '_tiles_{0}.jpg'.format(i), image)
+                i += 1
+
+    #do tiles
     def crop_tiles_in_folder(self, _path, _image, image_name, _tile_size):
         i = 0
         for h in range(0, _image.shape[0], _tile_size):
@@ -60,17 +78,49 @@ class SuperResolutionDataSet:
 
     #--------------------------------------#
 
-    def centeredCrop(self, img, new_height, new_width):
-        width =  np.size(img,1)
-        height =  np.size(img,0)
-        left = int(np.ceil((width - new_width)/2.))
-        top = int(np.ceil((height - new_height)/2.))
-        right = int(np.floor((width + new_width)/2.))
-        bottom = int(np.floor((height + new_height)/2.))
+    def crop_or_pad(self, _image, height, width):
+        img_h = _image.shape[0]
+        img_w = _image.shape[1]
 
-        cImg = img[top:bottom, left:right]
-        return cImg
+        pad_img = np.zeros(shape=(height, width, 3), dtype=_image.dtype)
+        pad_h = abs(height - img_h) / 2.0
+        pad_w = abs(width - img_w) / 2.0
+        pad_top = int(pad_h) + 1 if (pad_h - int(pad_h) != 0) else pad_h
+        pad_right = int(pad_w) + 1 if (pad_w - int(pad_w) != 0) else int(pad_w)
 
+        if (img_h < height and img_w < width):
+            pad_img[pad_h: -pad_top, pad_w: -pad_right, :] =_image
+
+        if (img_h > height and img_w > width):
+            pad_img = self.centeredCrop(_image, height, width)
+
+        if (img_h < height and img_w > width):
+            crimg = self.centeredCrop(_image, height, width)
+            pad_img[pad_h: -pad_top, :, :] = crimg
+
+        if (img_h > height and img_w < width):
+            crimg = self.centeredCrop(_image, height, width)
+            pad_img[:, pad_w: -pad_right, :] = crimg
+
+        return pad_img
+
+    def centeredCrop(self, _image, height, width):
+        img_h = _image.shape[0]
+        img_w = _image.shape[1]
+
+        top = 0
+        bottom = img_h
+        left = 0
+        right = img_w
+        if img_h > height:
+            top = int(np.floor((img_h - height)/2.))
+            bottom = int(np.floor((img_h + height)/2.))
+
+        if img_w > width:
+            left = int(np.floor((img_w - width)/2.))
+            right = int(np.floor((img_w + width)/2.))
+
+        return _image[top:bottom, left:right]
 
     def generate_dataset(self):
         #original images
@@ -84,16 +134,27 @@ class SuperResolutionDataSet:
                 print (image)
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    image_name = image;
-                    blurred_image = self.get_blurred_image(image, self.__upscale_coefficient__)
-                    # resize to 256x256
-                    blurred_image = skimage.transform.resize(blurred_image, (256, 256))
+                    image_name = image
                     original_image = imread(image)
-                    original_image = skimage.transform.resize(original_image, (256, 256))
-                    # crop tiles
+                    blurred_image = self.get_blurred_image(image, self.__upscale_coefficient__)
+                    shape = original_image.shape
+
+                    blurred_image = self.crop_or_pad(blurred_image, self._image_resize_height, self._image_resize_width)
+                    original_image = self.crop_or_pad(original_image, self._image_resize_height, self._image_resize_width)
+
+                     # crop tiles
                     self.crop_tiles_in_folder(self._blurred_tiles_directory, blurred_image, image_name, __tile_size__)
                     self.crop_tiles_in_folder(self._original_tiles_directory, original_image, image_name, __tile_size__)
+                    """
+                    # resize
+                    blurred_image = tf.image.resize_image_with_crop_or_pad(blurred_image, self._image_resize_height, self._image_resize_width)
+                    original_image = tf.image.resize_image_with_crop_or_pad(original_image, self._image_resize_height, self._image_resize_width)
 
+                    # crop tiles
+                    self.crop_tiles_in_folder_tf(self._blurred_tiles_directory, blurred_image, self._image_resize_height, self._image_resize_width, image_name, __tile_size__)
+                    self.crop_tiles_in_folder_tf(self._original_tiles_directory, original_image, self._image_resize_height, self._image_resize_width, image_name, __tile_size__)
+                    """
+                    print shape, "->", original_image.shape
             # blurred images tiles
             blurred_images = self.get_directory(self._blurred_tiles_directory)
 
@@ -123,19 +184,15 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.001
-    #training_iters = 100000
+    learning_rate = 0.01
     batch_size = 8
-    #display_step = 10
     #n_input = n_output = len(blurred_images)
-
     # Store layers weight & bias
     weights = {
         'wc1': tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1"), # 1 input, n1 outputs
         'wc2': tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2"), # n1 inputs, n2 outputs
         'wc3': tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3"), # n2 inputs, 1 outputs
     }
-
     biases = {
         'bc1': tf.Variable(tf.random_normal([n1]), name="bc1"),
         'bc2': tf.Variable(tf.random_normal([n2]), name="bc2"),
@@ -171,7 +228,8 @@ class SuperResolutionModel:
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
         # Construct model
-        pred = self.model(self.x, self.weights, self.biases)
+        with tf.name_scope("model") as scope:
+            pred = self.model(self.x, self.weights, self.biases)
         count_batch = n_input / self.batch_size
         # Define loss and optimizer
 
@@ -196,7 +254,6 @@ class SuperResolutionModel:
             while step <= count_batch:
                 batch_xs = blurred_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
                 batch_ys = original_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
-
                 # Fit training using batch data
                 sess.run(optimizer, feed_dict={self.x: batch_xs, self.y: batch_ys})
                 # Calculate batch accuracy
@@ -205,19 +262,23 @@ class SuperResolutionModel:
                 loss = sess.run(cost, feed_dict={self.x: batch_xs, self.y: batch_ys})
                 print "Iter " + str(step) + ", Training Accuracy = " + str(acc) + ", loss = " + str(loss)
                 step += 1
+
             print "Optimization Finished!"
 
             # Test model
-            print "Accuracy:", accuracy.eval({self.x: blurred_images_tiles[:count_batch * self.batch_size], self.y: original_images_tiles[:count_batch * self.batch_size]}) / count_batch
+            print "Accuracy:", accuracy.eval({self.x: blurred_images_tiles[:self.batch_size], self.y: original_images_tiles[:self.batch_size]})
 
             # Save model weights to disk
             save_path = saver.save(sess, model_save_name)
             print "Model saved in file: %s" % save_path
 
+            writer = tf.train.SummaryWriter("", sess.graph)
+
     # try get super resolutional from test image
     def evaluate_model(self, model_name, image_path):
         #open blurred image
-        blurred_image = [imread(image_path)]
+        blurred_image = skimage.transform.resize(imread(image_path), (__tile_size__, __tile_size__));
+        blurred_image = [blurred_image]
         saver = tf.train.Saver()
         val = self.model(self.x, self.weights, self.biases)
         #y = tf.Variable(tf.random_normal([1, __tile_size__, __tile_size__, 3]))
@@ -226,7 +287,7 @@ class SuperResolutionModel:
             saver.restore(sess, model_name)
             print("Model restored.")
             sess.run(init)
-            res = sess.run(val, feed_dict={self.x:blurred_image})
+            res = sess.run(val, feed_dict={self.x: blurred_image})
             img = Image.fromarray(res[0], 'RGB')
 
             f = pylab.figure()
