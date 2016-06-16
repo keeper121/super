@@ -315,7 +315,7 @@ class SuperResolutionModel:
             bc3 = sess.run(self.bc3)
             print "Restored last Biases:", bc3
 
-            res = np.array(sess.run(val, feed_dict={self.x: blurred_image}))
+            res = np.array(sess.run(val, feed_dict={self.x: blurred_image})) * 255
             print "output avg:", np.average(res)
 
             img = Image.fromarray(res[0], 'RGB')
