@@ -184,7 +184,7 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.01
+    learning_rate = 0.001
     batch_size = 8
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
@@ -206,6 +206,7 @@ class SuperResolutionModel:
     def conv2d(self, img, w, b):
         return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
 
+
     #create model
 
     def model(self,_X, wc1, wc2, wc3, bc1, bc2, bc3):
@@ -219,16 +220,27 @@ class SuperResolutionModel:
         conv3 = self.conv2d(conv2, wc3, bc3)
         return conv3
 
+
     # euclid distance
     def cost_func(self, pred, y, crop_size, count_batch):
         slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
         return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size) * (__tile_size__ - crop_size) * self.batch_size))
 
-
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
         # Construct model
         count_batch = n_input / self.batch_size
+
+
+        # Convolution Layer
+        conv1 = self.conv2d(self.x, self.wc1, self.bc1)
+
+        # Convolution Layer
+        conv2 = self.conv2d(conv1, self.wc2, self.bc2)
+
+        # Convolution Layer
+        conv3 = self.conv2d(conv2, self.wc3, self.bc3)
+
         with tf.name_scope('model'):
             pred = self.model(self.x, self.wc1, self.wc2, self.wc3, self.bc1, self.bc2, self.bc3)
             # Define loss and optimizer
@@ -256,8 +268,10 @@ class SuperResolutionModel:
             step = 1
             # Keep training until reach max iterations
             while step <= count_batch:
-                batch_xs = blurred_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
-                batch_ys = original_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
+                #norming batches
+                batch_xs = np.array(blurred_images_tiles[self.batch_size * (step - 1):self.batch_size * step]) / 255.0
+                batch_ys = np.array(original_images_tiles[self.batch_size * (step - 1):self.batch_size * step]) / 255.0
+
                 # Fit training using batch data
                 sess.run(optimizer, feed_dict={self.x: batch_xs, self.y: batch_ys})
                 # Calculate batch accuracy
@@ -265,9 +279,14 @@ class SuperResolutionModel:
                 # Calculate batch loss
                 loss = sess.run(cost, feed_dict={self.x: batch_xs, self.y: batch_ys})
 
-                model = sess.run(pred, feed_dict={self.x: batch_xs})
-                print model
                 print "Iter " + str(step) + ", Training Accuracy = " + str(acc) + ", loss = " + str(loss)
+
+                c1 = sess.run(conv1, feed_dict={self.x: batch_xs})
+                c2 = sess.run(conv2, feed_dict={self.x: batch_xs})
+                c3 = sess.run(conv3, feed_dict={self.x: batch_xs})
+                print "1st conv avg:", np.average(np.array(c1)), "; 2nd conv avg:", np.average(np.array(c2)), "; 3rd conv avg:", np.average(np.array(c3))
+                print "_________________________________________________________"
+                print
                 step += 1
 
             print "Optimization Finished!"
@@ -291,7 +310,6 @@ class SuperResolutionModel:
         blurred_image = [blurred_image]
         saver = tf.train.Saver()
         val = self.model(self.x, self.wc1, self.wc2, self.wc3, self.bc1, self.bc2, self.bc3)
-        #y = tf.Variable(tf.random_normal([1, __tile_size__, __tile_size__, 3]))
 
         with tf.Session() as sess:
             saver.restore(sess, model_name)
@@ -299,9 +317,9 @@ class SuperResolutionModel:
             bc3 = sess.run(self.bc3)
             print "Restored last Biases:", bc3
 
-            res = sess.run(val, feed_dict={self.x: blurred_image})
-
+            res = np.array(sess.run(val, feed_dict={self.x: blurred_image})) * 255.0
             print res
+
             img = Image.fromarray(res[0], 'RGB')
             f = pylab.figure()
             #blurred image
