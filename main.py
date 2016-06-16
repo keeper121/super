@@ -9,7 +9,7 @@ import skimage.transform
 import tensorflow as tf
 from skimage.io import imsave, imread
 from PIL import Image
-__tile_size__ = 53
+__tile_size__ = 42
 _crop_size = 12 # for convolutional
 
 class SuperResolutionDataSet:
@@ -20,8 +20,8 @@ class SuperResolutionDataSet:
     _original_tiles_directory = "out/original_tiles"
     _blurred_tiles_directory = "out/blurred_tiles"
 
-    _image_resize_width = 265
-    _image_resize_height = 265
+    _image_resize_width = 336
+    _image_resize_height = 336
 
     #open directory with images
     def get_directory(self, folder):
@@ -184,8 +184,8 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.00001
-    batch_size = 8
+    learning_rate = 0.0001
+    batch_size = 64
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
@@ -304,6 +304,7 @@ class SuperResolutionModel:
     def evaluate_model(self, model_name, image_path):
         #open blurred image
         blurred_image = skimage.transform.resize(imread(image_path), (__tile_size__, __tile_size__));
+        #blurred_image = imread(image_path)
         blurred_image = [blurred_image]
         saver = tf.train.Saver()
         val = self.model(self.x, self.wc1, self.wc2, self.wc3, self.bc1, self.bc2, self.bc3)
