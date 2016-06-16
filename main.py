@@ -184,7 +184,7 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.0001
+    learning_rate = 0.00001
     batch_size = 8
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
@@ -193,9 +193,9 @@ class SuperResolutionModel:
     wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2], stddev=0.35), name="wc2") # n1 inputs, n2 outputs
     wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3], stddev=0.35), name="wc3") # n2 inputs, 1 outputs
 
-    bc1 = tf.Variable(tf.random_normal([n1], stddev=0.35), name="bc1")
-    bc2 = tf.Variable(tf.random_normal([n2], stddev=0.35), name="bc2")
-    bc3 = tf.Variable(tf.random_normal([3], stddev=0.35), name="bc3")
+    bc1 = tf.Variable(tf.random_normal([n1]), name="bc1")
+    bc2 = tf.Variable(tf.random_normal([n2]), name="bc2")
+    bc3 = tf.Variable(tf.random_normal([3]), name="bc3")
 
     # tf Graph input
     x = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
@@ -314,7 +314,7 @@ class SuperResolutionModel:
             bc3 = sess.run(self.bc3)
             print "Restored last Biases:", bc3
 
-            res = np.array(sess.run(val, feed_dict={self.x: blurred_image})) * 255.0
+            res = np.array(sess.run(val, feed_dict={self.x: blurred_image}))
             print "output avg:", np.average(res)
 
             img = Image.fromarray(res[0], 'RGB')
