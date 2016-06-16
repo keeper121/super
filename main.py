@@ -9,19 +9,19 @@ import skimage.transform
 import tensorflow as tf
 from skimage.io import imsave, imread
 from PIL import Image
-__tile_size__ = 64 #42
+__tile_size__ = 53
 _crop_size = 12 # for convolutional
 
 class SuperResolutionDataSet:
     #constants
     __need_blurred_image__ = 1          # flag to generate blurred image
-    __upscale_coefficient__ = 3         # coefficient for image blurring
+    __upscale_coefficient__ = 2         # coefficient for image blurring
     _original_image_directory = "images"
     _original_tiles_directory = "out/original_tiles"
     _blurred_tiles_directory = "out/blurred_tiles"
 
-    _image_resize_width = 256 #336
-    _image_resize_height = 256
+    _image_resize_width = 265
+    _image_resize_height = 265
 
     #open directory with images
     def get_directory(self, folder):
@@ -184,20 +184,18 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.001
+    learning_rate = 0.0001
     batch_size = 8
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
-    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1") # 1 input, n1 outputs
-    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2") # n1 inputs, n2 outputs
-    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3") # n2 inputs, 1 outputs
+    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1], stddev=0.35), name="wc1") # 1 input, n1 outputs
+    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2], stddev=0.35), name="wc2") # n1 inputs, n2 outputs
+    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3], stddev=0.35), name="wc3") # n2 inputs, 1 outputs
 
-    bc1 = tf.Variable(tf.random_normal([n1]), name="bc1")
-    bc2 = tf.Variable(tf.random_normal([n2]), name="bc2")
-    bc3 = tf.Variable(tf.random_normal([3]), name="bc3")
-
-    test = tf.Variable(0.0, name="test")
+    bc1 = tf.Variable(tf.random_normal([n1], stddev=0.35), name="bc1")
+    bc2 = tf.Variable(tf.random_normal([n2], stddev=0.35), name="bc2")
+    bc3 = tf.Variable(tf.random_normal([3], stddev=0.35), name="bc3")
 
     # tf Graph input
     x = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
@@ -208,7 +206,6 @@ class SuperResolutionModel:
 
 
     #create model
-
     def model(self,_X, wc1, wc2, wc3, bc1, bc2, bc3):
         # Convolution Layer
         conv1 = self.conv2d(_X, wc1, bc1)
@@ -220,11 +217,10 @@ class SuperResolutionModel:
         conv3 = self.conv2d(conv2, wc3, bc3)
         return conv3
 
-
     # euclid distance
     def cost_func(self, pred, y, crop_size, count_batch):
-        slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-        return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size) * (__tile_size__ - crop_size) * self.batch_size))
+       slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
+       return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
 
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
@@ -285,6 +281,7 @@ class SuperResolutionModel:
                 c2 = sess.run(conv2, feed_dict={self.x: batch_xs})
                 c3 = sess.run(conv3, feed_dict={self.x: batch_xs})
                 print "1st conv avg:", np.average(np.array(c1)), "; 2nd conv avg:", np.average(np.array(c2)), "; 3rd conv avg:", np.average(np.array(c3))
+                print "bc3:", self.bc3.eval()
                 print "_________________________________________________________"
                 print
                 step += 1
@@ -318,7 +315,7 @@ class SuperResolutionModel:
             print "Restored last Biases:", bc3
 
             res = np.array(sess.run(val, feed_dict={self.x: blurred_image})) * 255.0
-            print res
+            print "output avg:", np.average(res)
 
             img = Image.fromarray(res[0], 'RGB')
             f = pylab.figure()
