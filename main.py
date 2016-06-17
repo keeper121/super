@@ -2,11 +2,11 @@
 import ntpath
 import os
 import warnings
-import pylab
 import numpy as np
 import skimage
 import skimage.transform
 import tensorflow as tf
+from matplotlib import pylab
 from skimage.io import imsave, imread
 from PIL import Image
 __tile_size__ = 42
@@ -187,8 +187,8 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.01
-    batch_size = 8
+    learning_rate = 0.00001
+    batch_size = 16
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
@@ -223,8 +223,8 @@ class SuperResolutionModel:
     # euclid distance
     def cost_func(self, pred, y, crop_size, count_batch):
        slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-       return tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2))
-       #return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
+       #return tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2))
+       return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
 
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
