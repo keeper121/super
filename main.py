@@ -187,8 +187,8 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.001
-    batch_size = 16
+    learning_rate = 0.01
+    batch_size = 8
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
