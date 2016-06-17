@@ -124,11 +124,13 @@ class SuperResolutionDataSet:
 
     def generate_dataset(self):
         #original images
-        original_images = self.get_directory(self._original_image_directory)
+    	original_images = self.get_directory(self._original_image_directory)
         blurred_images_tiles = []
         original_images_tiles = []
         if self.__need_blurred_image__:
+            print "clear original tiles folder"
             self.clear_directory(self._original_tiles_directory)
+            print "clear blurred tiles folder"
             self.clear_directory(self._blurred_tiles_directory)
             for image in original_images:
                 print (image)
@@ -156,9 +158,10 @@ class SuperResolutionDataSet:
                     """
                     print shape, "->", original_image.shape
             # blurred images tiles
-            blurred_images = self.get_directory(self._blurred_tiles_directory)
-            print str(len(blurred_images)) + "x2", "tiles saved"
-
+            blurred_images_tiles = self.get_directory(self._blurred_tiles_directory)
+            original_images_tiles= self.get_directory(self._original_tiles_directory)
+            print str(len(blurred_images_tiles)) + "x2", "tiles saved"
+            """
             for image in blurred_images:
                 image = imread(image)
                 blurred_images_tiles.append(image)
@@ -169,7 +172,7 @@ class SuperResolutionDataSet:
                 image = imread(image)
                 original_images_tiles.append(self.centeredCrop(image, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2))
             print "original tiles opened"
-
+            """
         return blurred_images_tiles, original_images_tiles
 
 
@@ -185,13 +188,13 @@ class SuperResolutionModel:
     n1 = 64
     n2 = 32
     learning_rate = 0.001
-    batch_size = 8
+    batch_size = 16
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
-    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1], stddev=0.35), name="wc1") # 1 input, n1 outputs
-    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2], stddev=0.35), name="wc2") # n1 inputs, n2 outputs
-    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3], stddev=0.35), name="wc3") # n2 inputs, 1 outputs
+    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1") # 1 input, n1 outputs
+    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2") # n1 inputs, n2 outputs
+    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3") # n2 inputs, 1 outputs
 
     bc1 = tf.Variable(tf.random_normal(shape=[n1]), name="bc1")
     bc2 = tf.Variable(tf.random_normal(shape=[n2]), name="bc2")
@@ -203,8 +206,6 @@ class SuperResolutionModel:
 
     def conv2d(self, img, w, b):
         return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
-
-
 
     #create model
     def model(self,_X, wc1, wc2, wc3, bc1, bc2, bc3):
@@ -222,7 +223,8 @@ class SuperResolutionModel:
     # euclid distance
     def cost_func(self, pred, y, crop_size, count_batch):
        slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-       return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
+       return tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2))
+       #return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
 
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
@@ -267,8 +269,15 @@ class SuperResolutionModel:
             # Keep training until reach max iterations
             while step <= count_batch:
                 #norming batches
-                batch_xs = np.array(blurred_images_tiles[self.batch_size * (step - 1):self.batch_size * step]) / 255.0
-                batch_ys = np.array(original_images_tiles[self.batch_size * (step - 1):self.batch_size * step]) / 255.0
+                batch_xs_names = blurred_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
+                batch_ys_names = original_images_tiles[self.batch_size * (step - 1):self.batch_size * step]
+                batch_xs = []
+                batch_ys = []
+                for i in range(0, self.batch_size, 1):
+                    image = np.array(imread(batch_xs_names[i])) / 255.0
+                    batch_xs.append(image)
+                    image = np.array(SuperResolutionDataSet().centeredCrop(imread(batch_ys_names[i]), __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2)) / 255.0
+                    batch_ys.append(image)
 
                 # Fit training using batch data
                 sess.run(optimizer, feed_dict={self.x: batch_xs, self.y: batch_ys})
@@ -289,9 +298,6 @@ class SuperResolutionModel:
                 step += 1
 
             print "Optimization Finished!"
-
-            # Test model
-            print "Accuracy:", accuracy.eval({self.x: blurred_images_tiles[:self.batch_size], self.y: original_images_tiles[:self.batch_size]})
 
             print "Last Biases:", self.bc3.eval()
             # Save model weights to disk
@@ -341,6 +347,7 @@ class SuperResolutionModel:
 need_train = 1
 need_evaluate = 1
 
+print "start"
 # main code
 if (need_train):
     blurred_tiles, original_tiles = SuperResolutionDataSet().generate_dataset()
