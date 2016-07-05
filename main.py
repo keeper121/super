@@ -191,20 +191,20 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.0001
+    learning_rate = 0.00001
     batch_size = 64
     print_out = 10
 
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
-    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1], stddev=0.1), name="wc1") # 1 input, n1 outputs
-    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2], stddev=0.1), name="wc2") # n1 inputs, n2 outputs
-    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3], stddev=0.1), name="wc3") # n2 inputs, 1 outputs
+    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1") # 1 input, n1 outputs
+    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2") # n1 inputs, n2 outputs
+    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3") # n2 inputs, 1 outputs
 
-    bc1 = tf.Variable(tf.random_normal(shape=[n1], stddev=0.1), name="bc1")
-    bc2 = tf.Variable(tf.random_normal(shape=[n2], stddev=0.1), name="bc2")
-    bc3 = tf.Variable(tf.random_normal(shape=[3], stddev=0.1), name="bc3")
+    bc1 = tf.Variable(tf.random_normal(shape=[n1]), name="bc1")
+    bc2 = tf.Variable(tf.random_normal(shape=[n2]), name="bc2")
+    bc3 = tf.Variable(tf.random_normal(shape=[3]), name="bc3")
 
     # tf Graph input
     x = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
@@ -231,9 +231,9 @@ class SuperResolutionModel:
     # euclid distance
     def cost_func(self, pred, y, crop_size):
        slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-       sub = tf.sub(slice_pred, y)
+       sub = tf.abs(tf.sub(slice_pred, y))
        # sum over all dimensions except batch dim
-       sum = tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2), [1, 2, 3]);
+       sum = tf.reduce_sum(tf.pow(sub, 2), [1, 2, 3])
        #take mean over batch
        loss = tf.reduce_mean(sum)
        return loss
@@ -260,7 +260,7 @@ class SuperResolutionModel:
         count_batch = n_input / self.batch_size
 
 
-        # Convolution Layer
+        # Convolution Layer for show
         conv1 = self.conv2d(self.x, self.wc1, self.bc1)
 
         # Convolution Layer
@@ -343,11 +343,10 @@ class SuperResolutionModel:
             writer.flush()
             writer.close()
 
-
     # try get super resolutional from test image
     def evaluate_model(self, model_name, image_path):
         #open blurred image
-        blurred_image = skimage.transform.resize(imread(image_path), (__tile_size__, __tile_size__));
+        blurred_image = skimage.transform.resize(imread(image_path), (__tile_size__, __tile_size__))
         #blurred_image = imread(image_path)
         blurred_image = [blurred_image]
         saver = tf.train.Saver()
