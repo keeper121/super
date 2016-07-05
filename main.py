@@ -2,10 +2,10 @@
 import ntpath
 import os
 import warnings
+import tensorflow as tf
 import numpy as np
 import skimage
 import skimage.transform
-import tensorflow as tf
 from matplotlib import pylab
 from skimage.io import imsave, imread
 from PIL import Image
@@ -14,7 +14,7 @@ _crop_size = 12 # for convolutional
 
 class SuperResolutionDataSet:
     #constants
-    __need_blurred_image__ = 1          # flag to generate blurred image
+    __need_blurred_image__ = 0          # flag to generate blurred image
     __upscale_coefficient__ = 2         # coefficient for image blurring
     _original_image_directory = "images"
     _original_tiles_directory = "out/original_tiles"
@@ -140,39 +140,43 @@ class SuperResolutionDataSet:
                     original_image = imread(image)
                     blurred_image = self.get_blurred_image(image, self.__upscale_coefficient__)
                     shape = original_image.shape
+                    #for cpu
 
-                    blurred_image = self.crop_or_pad(blurred_image, self._image_resize_height, self._image_resize_width)
-                    original_image = self.crop_or_pad(original_image, self._image_resize_height, self._image_resize_width)
+                    if len(original_image.shape) == 3 and original_image.shape[2] == 3:
+                        blurred_image = self.crop_or_pad(blurred_image, self._image_resize_height, self._image_resize_width)
+                        original_image = self.crop_or_pad(original_image, self._image_resize_height, self._image_resize_width)
+                        # crop tiles
+                        self.crop_tiles_in_folder(self._blurred_tiles_directory, blurred_image, image_name, __tile_size__)
+                        self.crop_tiles_in_folder(self._original_tiles_directory, original_image, image_name, __tile_size__)
+                        print shape, "->", original_image.shape
 
-                     # crop tiles
-                    self.crop_tiles_in_folder(self._blurred_tiles_directory, blurred_image, image_name, __tile_size__)
-                    self.crop_tiles_in_folder(self._original_tiles_directory, original_image, image_name, __tile_size__)
                     """
-                    # resize
+                    #TODO make faster variant -> tf.while_loop
+                    # for gpu
                     blurred_image = tf.image.resize_image_with_crop_or_pad(blurred_image, self._image_resize_height, self._image_resize_width)
                     original_image = tf.image.resize_image_with_crop_or_pad(original_image, self._image_resize_height, self._image_resize_width)
 
                     # crop tiles
                     self.crop_tiles_in_folder_tf(self._blurred_tiles_directory, blurred_image, self._image_resize_height, self._image_resize_width, image_name, __tile_size__)
                     self.crop_tiles_in_folder_tf(self._original_tiles_directory, original_image, self._image_resize_height, self._image_resize_width, image_name, __tile_size__)
+                    print shape, "->", original_image.get_shape()
                     """
-                    print shape, "->", original_image.shape
-            # blurred images tiles
-            blurred_images_tiles = self.get_directory(self._blurred_tiles_directory)
-            original_images_tiles= self.get_directory(self._original_tiles_directory)
-            print str(len(blurred_images_tiles)) + "x2", "tiles saved"
-            """
-            for image in blurred_images:
-                image = imread(image)
-                blurred_images_tiles.append(image)
-            print "blurred tiles opened"
-            # original images tiles
-            original_images = self.get_directory(self._original_tiles_directory)
-            for image in original_images:
-                image = imread(image)
-                original_images_tiles.append(self.centeredCrop(image, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2))
-            print "original tiles opened"
-            """
+        # blurred images tiles
+        blurred_images_tiles = self.get_directory(self._blurred_tiles_directory)
+        original_images_tiles= self.get_directory(self._original_tiles_directory)
+        print str(len(blurred_images_tiles)) + "x2", "tiles saved"
+        """
+        for image in blurred_images:
+            image = imread(image)
+            blurred_images_tiles.append(image)
+        print "blurred tiles opened"
+        # original images tiles
+        original_images = self.get_directory(self._original_tiles_directory)
+        for image in original_images:
+            image = imread(image)
+            original_images_tiles.append(self.centeredCrop(image, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2))
+        print "original tiles opened"
+        """
         return blurred_images_tiles, original_images_tiles
 
 
@@ -187,22 +191,26 @@ class SuperResolutionModel:
     f3 = 5                              # 3rd convolutuonal kernel size
     n1 = 64
     n2 = 32
-    learning_rate = 0.00001
-    batch_size = 16
+    learning_rate = 0.0001
+    batch_size = 64
+    print_out = 10
+
     #n_input = n_output = len(blurred_images)
     # Store layers weight & bias
 
-    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1]), name="wc1") # 1 input, n1 outputs
-    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2]), name="wc2") # n1 inputs, n2 outputs
-    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3]), name="wc3") # n2 inputs, 1 outputs
+    wc1 = tf.Variable(tf.random_normal([f1, f1, 3, n1], stddev=0.1), name="wc1") # 1 input, n1 outputs
+    wc2 = tf.Variable(tf.random_normal([f2, f2, n1, n2], stddev=0.1), name="wc2") # n1 inputs, n2 outputs
+    wc3 = tf.Variable(tf.random_normal([f3, f3, n2, 3], stddev=0.1), name="wc3") # n2 inputs, 1 outputs
 
-    bc1 = tf.Variable(tf.random_normal(shape=[n1]), name="bc1")
-    bc2 = tf.Variable(tf.random_normal(shape=[n2]), name="bc2")
-    bc3 = tf.Variable(tf.random_normal(shape=[3]), name="bc3")
+    bc1 = tf.Variable(tf.random_normal(shape=[n1], stddev=0.1), name="bc1")
+    bc2 = tf.Variable(tf.random_normal(shape=[n2], stddev=0.1), name="bc2")
+    bc3 = tf.Variable(tf.random_normal(shape=[3], stddev=0.1), name="bc3")
 
     # tf Graph input
     x = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
     y = tf.placeholder(tf.float32, [None, __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2, 3])
+    #y = tf.placeholder(tf.float32, [None, __tile_size__, __tile_size__, 3])
+
 
     def conv2d(self, img, w, b):
         return tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(img, w, strides=[1, 1, 1, 1], padding='SAME'),b))
@@ -221,11 +229,31 @@ class SuperResolutionModel:
         return conv3
 
     # euclid distance
-    def cost_func(self, pred, y, crop_size, count_batch):
+    def cost_func(self, pred, y, crop_size):
        slice_pred = pred[:, crop_size:__tile_size__ - crop_size, crop_size:__tile_size__ - crop_size, :]
-       #return tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2))
-       return tf.div(tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2)), (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
-
+       sub = tf.sub(slice_pred, y)
+       # sum over all dimensions except batch dim
+       sum = tf.reduce_sum(tf.pow(tf.sub(slice_pred, y), 2), [1, 2, 3]);
+       #take mean over batch
+       loss = tf.reduce_mean(sum)
+       return loss
+       #return tf.div(loss, (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
+    """
+    def cost_func(self, pred, y, crop_size):
+        i = 0
+        sum = tf.Variable(0.0)
+    
+        #get center
+        while i < self.batch_size:
+            slice_y = y[i,:,:,:]
+            #del conv border
+            slice_pred = tf.image.resize_image_with_crop_or_pad(pred[i,:,:,:], __tile_size__ - crop_size * 2, __tile_size__ - crop_size * 2)
+            tf.add(sum, tf.reduce_sum(tf.pow(tf.sub(slice_pred, slice_y), 2)))
+            i = i + 1
+        
+        return sum
+        #return tf.div(sum, (3 * (__tile_size__ - crop_size * 2) * (__tile_size__ - crop_size * 2) * self.batch_size))
+    """
     def train(self, blurred_images_tiles, original_images_tiles, model_save_name):
         n_input = len(blurred_images_tiles)
         # Construct model
@@ -247,11 +275,12 @@ class SuperResolutionModel:
 
             # Euclidean distance
             with tf.name_scope('cost'):
-                cost = self.cost_func(pred, self.y, _crop_size, count_batch)
-                optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate).minimize(cost)
+                cost = self.cost_func(pred, self.y, _crop_size)
+                optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(cost)
+                #optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate).minimize(cost)
 
             with tf.name_scope('accuracy'):
-                euclid = self.cost_func(pred, self.y, _crop_size, count_batch)
+                euclid = self.cost_func(pred, self.y, _crop_size)
                 accuracy = tf.reduce_mean(tf.cast(tf.sqrt(euclid), tf.float32))
 
         # Initializing the variables
@@ -261,6 +290,8 @@ class SuperResolutionModel:
         saver = tf.train.Saver()
 
         # Launch the graph
+
+        # config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True)
         with tf.Session() as sess:
             sess.run(init)
             writer = tf.train.SummaryWriter("/tmp/log", sess.graph)
@@ -277,6 +308,7 @@ class SuperResolutionModel:
                     image = np.array(imread(batch_xs_names[i])) / 255.0
                     batch_xs.append(image)
                     image = np.array(SuperResolutionDataSet().centeredCrop(imread(batch_ys_names[i]), __tile_size__ - _crop_size * 2, __tile_size__ - _crop_size * 2)) / 255.0
+                    #image = np.array(imread(batch_ys_names[i])) / 255.0
                     batch_ys.append(image)
 
                 # Fit training using batch data
@@ -286,16 +318,20 @@ class SuperResolutionModel:
                 # Calculate batch loss
                 loss = sess.run(cost, feed_dict={self.x: batch_xs, self.y: batch_ys})
 
-                print "Iter " + str(step) + ", Training Accuracy = " + str(acc) + ", loss = " + str(loss)
-
-                c1 = sess.run(conv1, feed_dict={self.x: batch_xs})
-                c2 = sess.run(conv2, feed_dict={self.x: batch_xs})
-                c3 = sess.run(conv3, feed_dict={self.x: batch_xs})
-                print "1st conv avg:", np.average(np.array(c1)), "; 2nd conv avg:", np.average(np.array(c2)), "; 3rd conv avg:", np.average(np.array(c3))
-                print "bc3:", self.bc3.eval()
-                print "_________________________________________________________"
-                print
+                if step % self.print_out == 0:
+                    print "Iter " + str(step) + ", Training Accuracy = " + str(acc) + ", loss = " + str(loss)
+                    c1 = sess.run(conv1, feed_dict={self.x: batch_xs})
+                    c2 = sess.run(conv2, feed_dict={self.x: batch_xs})
+                    c3 = sess.run(conv3, feed_dict={self.x: batch_xs})
+                    print "1st conv avg:", np.average(np.array(c1)), "; 2nd conv avg:", np.average(np.array(c2)), "; 3rd conv avg:", np.average(np.array(c3))
+                    print "bc3:", self.bc3.eval()
+                    print "complete:", float(step) / count_batch * 100.0, "%"
+                    print "_________________________________________________________"
+                    print
+                
                 step += 1
+
+
 
             print "Optimization Finished!"
 
